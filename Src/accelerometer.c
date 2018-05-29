@@ -47,5 +47,8 @@ void accelerometer_clock_enable(void) {
 }
 
 void accelerometer_init(void) {
+    SPI_TypeDef *spi_1 = SPI1;
 
+    // Reset baud rate and set
+    spi_1->CR1 &= ~(111 << 3);
 }
