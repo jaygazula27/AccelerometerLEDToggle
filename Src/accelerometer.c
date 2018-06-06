@@ -1,17 +1,20 @@
 #include "stm32f4xx.h"
 #include "accelerometer.h"
+#include "core_cm4.h"
 
 static void gpio_clock_enable(void);
 static void gpio_init(void);
 static void accelerometer_clock_enable(void);
-static void accelerometer_init(void);
+static void configure_accelerometer(void);
 
 void accelerometer_init(void) {
     gpio_clock_enable();
     gpio_init();
 
     accelerometer_clock_enable();
-    accelerometer_init();
+    configure_accelerometer();
+
+    NVIC_EnableIRQ(SPI1_IRQn);
 }
 
 void gpio_clock_enable(void) {
@@ -23,22 +26,22 @@ void gpio_init(void) {
     GPIO_TypeDef *gpio_a = GPIOA;
 
     // Reset mode and set as alternate function
-    gpio_a->MODER &= ~(111111 << 10);
-    gpio_a->MODER |= (101010 << 10);
+    gpio_a->MODER &= ~(0x3 << 10) & ~(0x3 << 12) & ~(0x3 << 14);
+    gpio_a->MODER |= (0x2 << 10) | (0x2 << 12) | (0x2 << 14);
 
-    // Set output to PP (reset state)
-    gpio_a->OTYPER &= ~(111 << 5);
+    // Set output to PP
+    gpio_a->OTYPER &= ~(1 << 5) & ~(1 << 6) & ~(1 << 7);
 
     // Set speed to low
-    gpio_a->OSPEEDR &= ~(111111 << 10);
+    gpio_a->OSPEEDR &= ~(0x3 << 10) & ~(0x3 << 12) & ~(0x3 << 14);
 
     // Reset pull-up/pull-down and set to pull-down
-    gpio_a->PUPDR &= ~(111111 << 10);
-    gpio_a->PUPDR |= (101010 << 10);
+    gpio_a->PUPDR &= ~(0x3 << 10) & ~(0x3 << 12) & ~(0x3 << 14);
+    gpio_a->PUPDR |= (0x2 << 10) | (0x2 << 12) | (0x2 << 14);
 
     // Reset alternate function and set to SPI
-    gpio_a->AFR[0] &= ~(0xFFF << 20);
-    gpio_a->AFR[0] |= (0x555 << 20);
+    gpio_a->AFR[0] &= ~(0xF << 20) & ~(0xF << 24) & ~(0xF << 28);
+    gpio_a->AFR[0] |= (0x5 << 20) | (0x5 << 24) | (0x5 << 28);
 }
 
 void accelerometer_clock_enable(void) {
@@ -46,9 +49,39 @@ void accelerometer_clock_enable(void) {
     rcc->APB2ENR |= (1 << 12);
 }
 
-void accelerometer_init(void) {
+void configure_accelerometer(void) {
     SPI_TypeDef *spi_1 = SPI1;
 
-    // Reset baud rate and set
-    spi_1->CR1 &= ~(111 << 3);
+    // First disable it while we configure SPI
+    spi_1->CR1 &= ~(1 << 6);
+
+    // Reset baud rate and set to fPCLK/16
+    // because APB2 peripheral clock currently is 84 MHz
+    // and the max clock of the accelerometer is 10 MHz.
+    spi_1->CR1 &= ~(0x7 << 3);
+    spi_1->CR1 |= (0x3 << 3);
+
+    // Set clock phase to 1
+    spi_1->CR1 |= (1 << 0);
+
+    // Set clock polarity to 1
+    spi_1->CR1 |= (1 << 1);
+
+    // 16 bit data frame format
+    spi_1->CR1 |= (1 << 11);
+
+    // MSB first
+    spi_1->CR1 &= ~(1 << 7);
+
+    // Software slave management enabled
+    spi_1->CR1 |= (1 << 9);
+
+    // Master configuration enabled
+    spi_1->CR1 |= (1 << 2);
+
+    // Enable RX buffer not empty interrupt
+    spi_1->CR2 |= (1 << 6);
+
+    // Enable SPI
+    spi_1->CR1 |= (1 << 6);
 }

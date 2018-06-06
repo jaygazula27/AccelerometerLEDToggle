@@ -1,5 +1,6 @@
 #include "stm32f4xx.h"
 #include "led.h"
+#include "accelerometer.h"
 
 int main(void) {
     led_clock_enable();
@@ -14,7 +15,15 @@ int main(void) {
     led_turn_on(LED_RED);
     led_turn_on(LED_BLUE);
 
+    accelerometer_init();
+
     while(1);
 
     return 0;
+}
+
+void SPI1_IRQHandler(void) {
+    int i = 5;
+    i += 10;
+    i += 20;
 }
