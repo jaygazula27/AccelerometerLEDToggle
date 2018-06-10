@@ -21,9 +21,3 @@ int main(void) {
 
     return 0;
 }
-
-void SPI1_IRQHandler(void) {
-    int i = 5;
-    i += 10;
-    i += 20;
-}

@@ -1,13 +1,19 @@
+#include <stdint.h>
+#include <stdbool.h>
 #include "stm32f4xx.h"
 #include "accelerometer.h"
-#include "core_cm4.h"
 
 static void gpio_clock_enable(void);
 static void gpio_a_init(void);
 static void gpio_e_init(void);
 static void accelerometer_clock_enable(void);
 static void configure_accelerometer(void);
-static void select_slave(void);
+//static void pull_slave_high(void);
+static void pull_slave_low(void);
+static void turn_on_accelerometer(void);
+static void wait_till_transmit_complete(void);
+static void transmit(uint8_t address, uint8_t data);
+static void receive_dummy_data(void);
 
 void accelerometer_init(void) {
     gpio_clock_enable();
@@ -16,8 +22,7 @@ void accelerometer_init(void) {
 
     accelerometer_clock_enable();
     configure_accelerometer();
-
-    NVIC_EnableIRQ(SPI1_IRQn);
+    turn_on_accelerometer();
 }
 
 void gpio_clock_enable(void) {
@@ -63,6 +68,9 @@ void gpio_e_init(void) {
     // Set as pull-up
     gpio_e->PUPDR &= ~(0x3 << 6);
     gpio_e->PUPDR |= (1 << 6);
+
+    // Set it low to select the slave
+    pull_slave_low();
 }
 
 void accelerometer_clock_enable(void) {
@@ -109,15 +117,65 @@ void configure_accelerometer(void) {
     // SS output enabled
     spi_1->CR2 |= (1 << 2);
 
-    // Pull the CS (slave select) low
-    select_slave();
-
     // Enable SPI
     spi_1->CR1 |= (1 << 6);
+
+    // Wait a little bit for accelerometer to turn on
+    for (int i=0; i<1000000; i++);
 }
 
-/* Pulls the slave select line low */
-void select_slave(void) {
+//void pull_slave_high(void) {
+//    GPIO_TypeDef *gpio_e = GPIOE;
+//    gpio_e->BSRR |= (1 << 19);
+//}
+
+void pull_slave_low(void) {
     GPIO_TypeDef *gpio_e = GPIOE;
     gpio_e->BSRR |= (1 << 3);
+}
+
+void turn_on_accelerometer(void) {
+    // Set output data rate to 100Hz
+    // and enable X-axis, Y-axis.
+    transmit(0x20, 0x63);
+    receive_dummy_data();
+}
+
+/*
+ * Transmit is synchronous.
+ */
+void transmit(uint8_t address, uint8_t data) {
+    SPI_TypeDef *spi_1 = SPI1;
+
+    // Wait till transmit buffer is ready
+    wait_till_transmit_complete();
+
+    spi_1->DR = address;
+
+    // Wait till transmit buffer is ready
+    wait_till_transmit_complete();
+
+    spi_1->DR = data;
+
+    // Wait till transmit buffer has been read
+    wait_till_transmit_complete();
+}
+
+void wait_till_transmit_complete(void) {
+    SPI_TypeDef *spi_1 = SPI1;
+
+    while (true) {
+        bool is_busy = (spi_1->SR >> 7) & 1;
+        bool is_transmit_buffer_empty = (spi_1->SR >> 1) & 1;
+
+        if (!is_busy && is_transmit_buffer_empty) {
+            break;
+        }
+    }
+}
+
+void receive_dummy_data(void) {
+    SPI_TypeDef *spi_1 = SPI1;
+    spi_1->DR;
+    spi_1->SR;
 }
